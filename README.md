@@ -97,6 +97,114 @@ server {
 }
 ```
 
+### 阿里云宝塔面板部署
+
+适合在阿里云 ECS（或其他 Linux 云主机）上用宝塔面板部署本项目。网页转换本身不依赖 MySQL；只有导入生成的 `.sql` 时才需要数据库。
+
+#### 1. 安装软件
+
+在宝塔「软件商店」安装：
+
+- **Nginx**
+- **PM2 管理器**（或自行安装 PM2）
+- **Node 版本管理器**，并安装 **Node.js 20.9 或更高**
+
+确认：
+
+```bash
+node -v
+npm -v
+```
+
+#### 2. 上传项目
+
+将项目放到服务器，例如：
+
+```text
+/www/wwwroot/access-to-mysql
+```
+
+可用宝塔「文件」上传压缩包后解压，或用 `git clone`。
+
+#### 3. 安装依赖并构建
+
+在宝塔「终端」或 SSH 中执行：
+
+```bash
+cd /www/wwwroot/access-to-mysql
+npm install
+npm run build
+```
+
+#### 4. 用 PM2 常驻启动
+
+```bash
+cd /www/wwwroot/access-to-mysql
+pm2 start npm --name access-to-mysql -- start
+pm2 save
+pm2 startup
+```
+
+也可在宝塔「PM2 管理器」中添加项目，运行目录指向项目路径，启动命令使用 `npm start`，端口为 **43180**。
+
+先在本机验证服务已启动：
+
+```text
+http://127.0.0.1:43180
+```
+
+#### 5. 添加网站并配置反向代理
+
+1. 宝塔 → **网站** → 添加站点，绑定你的域名（根目录可任意，实际由反向代理转发）
+2. 站点设置 → **反向代理** → 添加，目标 URL 填：
+
+```text
+http://127.0.0.1:43180
+```
+
+3. 打开该站点的 Nginx 配置，确保包含上传体积与超时设置（本项目允许最大约 256 MB，转换最长约 120 秒）：
+
+```nginx
+client_max_body_size 256m;
+
+location / {
+    proxy_pass http://127.0.0.1:43180;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 120s;
+    proxy_send_timeout 120s;
+}
+```
+
+保存后重载 Nginx。
+
+#### 6. SSL 与安全组
+
+- 站点设置 → **SSL**：申请 Let’s Encrypt，可开启强制 HTTPS
+- 阿里云安全组与宝塔防火墙：**对外只开放 80 / 443**
+- **不要把 43180 对公网开放**，仅供本机 Nginx 反向代理访问
+
+#### 7. 更新代码
+
+```bash
+cd /www/wwwroot/access-to-mysql
+# git pull 或重新上传代码后：
+npm install
+npm run build
+pm2 restart access-to-mysql
+```
+
+#### 常见问题
+
+| 现象 | 处理 |
+| --- | --- |
+| 上传大文件失败 | 检查 Nginx 是否设置 `client_max_body_size 256m` |
+| 转换超时 / 504 | 加大 `proxy_read_timeout`、`proxy_send_timeout` |
+| 访问 502 | 检查 PM2 中 `access-to-mysql` 是否在运行，端口是否为 `43180` |
+| Node 报错或无法启动 | 确认 Node.js ≥ 20.9 |
+
 ---
 
 ## 网页使用
