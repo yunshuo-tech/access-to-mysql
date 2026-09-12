@@ -1,6 +1,6 @@
 # Access 转 MySQL
 
-**版本：** v1.0  
+**版本：** v1.0.1  
 **开发者：** Hangzhou Yunshuo Technology Co., Ltd.（杭州云硕科技有限公司）
 
 把 Microsoft Access（`.mdb` / `.accdb`）转成可直接导入的 MySQL SQL 脚本。提供网页上传转换和命令行批量转换两种用法。
