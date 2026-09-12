@@ -570,6 +570,11 @@ npm run convert -- "D:\\Users\\Desktop\\ACCESS" -o .\\mysql-sql`}
           </CardContent>
         </Card>
       </section>
+
+      <footer className="border-t border-border pt-6 pb-2 text-center text-xs leading-6 text-muted-foreground">
+        <p>Copyright © 2026 Hangzhou Yunshuo Technology Co., Ltd.（杭州云硕科技有限公司）</p>
+        <p>Access 转 MySQL v1.0.2</p>
+      </footer>
     </div>
   );
 }

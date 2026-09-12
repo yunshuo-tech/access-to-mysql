@@ -1,6 +1,6 @@
 {
   "name": "access-to-mysql",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Convert Microsoft Access (.mdb / .accdb) databases into MySQL import scripts",
   "author": "Hangzhou Yunshuo Technology Co., Ltd.（杭州云硕科技有限公司）",
   "private": true,
