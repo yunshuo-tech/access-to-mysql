@@ -87,7 +87,7 @@ export function ConverterApp() {
   const [files, setFiles] = useState<File[]>([]);
   const [databaseName, setDatabaseName] = useState("");
   const [password, setPassword] = useState("");
-  const [includeCreateDatabase, setIncludeCreateDatabase] = useState(true);
+  const [includeCreateDatabase, setIncludeCreateDatabase] = useState(false);
   const [includeDropTable, setIncludeDropTable] = useState(true);
   const [includeData, setIncludeData] = useState(true);
   const [dragging, setDragging] = useState(false);
@@ -316,7 +316,7 @@ export function ConverterApp() {
           <CardHeader>
             <CardTitle>导出选项</CardTitle>
             <CardDescription>
-              默认生成 utf8mb4、InnoDB 脚本，适合直接导入 MySQL 5.7 / 8。
+              默认生成 utf8mb4、InnoDB 脚本。INSERT 按约 256KB 拆分，便于 phpMyAdmin 导入。
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -350,6 +350,9 @@ export function ConverterApp() {
                 />
                 生成 CREATE DATABASE / USE
               </label>
+              <p className="pl-6 text-xs leading-5 text-muted-foreground">
+                默认不生成。phpMyAdmin 请先选中目标库再导入。只有 MySQL 账号有建库权限时才勾选。
+              </p>
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -550,7 +553,9 @@ export function ConverterApp() {
             <pre className="overflow-x-auto rounded-lg bg-muted p-3 text-foreground">
 {`mysql -u root -p < 库存管理.sql`}
             </pre>
-            <p>或在 MySQL 客户端里打开脚本执行。默认字符集为 utf8mb4，中文可正常导入。</p>
+            <p>
+              用 phpMyAdmin 导入时，先在左侧选中目标数据库。默认脚本不含 CREATE DATABASE，避免账号没有建库权限时导入失败。
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -573,7 +578,7 @@ npm run convert -- "D:\\Users\\Desktop\\ACCESS" -o .\\mysql-sql`}
 
       <footer className="border-t border-border pt-6 pb-2 text-center text-xs leading-6 text-muted-foreground">
         <p>Copyright © 2026 Hangzhou Yunshuo Technology Co., Ltd.（杭州云硕科技有限公司）</p>
-        <p>Access 转 MySQL v1.0.2</p>
+        <p>Access 转 MySQL v1.0.3</p>
       </footer>
     </div>
   );

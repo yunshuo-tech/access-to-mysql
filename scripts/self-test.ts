@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   formatDateTime,
   mapColumnType,
+  packInsertBatches,
   quoteIdent,
   quoteString,
   sqlLiteral,
@@ -53,6 +54,19 @@ function run() {
     }),
     "LONGTEXT",
   );
+  const header = "INSERT INTO `t` (`a`) VALUES\n  ";
+  const small = "('x')";
+  const byRows = packInsertBatches([small, small, small, small, small], header, 2, 100_000);
+  assert.deepEqual(byRows.map((batch) => batch.length), [2, 2, 1]);
+
+  const wide = `('${"a".repeat(80)}')`;
+  const byBytes = packInsertBatches([wide, wide, wide], header, 200, Buffer.byteLength(header + wide + ";", "utf8"));
+  assert.deepEqual(byBytes.map((batch) => batch.length), [1, 1, 1]);
+
+  const huge = `('${"b".repeat(500)}')`;
+  const oversized = packInsertBatches([huge], header, 200, 64);
+  assert.equal(oversized.length, 1);
+  assert.equal(oversized[0].length, 1);
   console.log("self-test ok");
 }
 

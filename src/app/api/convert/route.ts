@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     const options: ConvertOptions = {
       databaseName: String(form.get("databaseName") || "").trim() || undefined,
       password: String(form.get("password") || "").trim() || undefined,
-      includeCreateDatabase: boolValue(form.get("includeCreateDatabase"), true),
+      includeCreateDatabase: boolValue(form.get("includeCreateDatabase"), false),
       includeDropTable: boolValue(form.get("includeDropTable"), true),
       includeData: boolValue(form.get("includeData"), true),
       engine: form.get("engine") === "MyISAM" ? "MyISAM" : "InnoDB",

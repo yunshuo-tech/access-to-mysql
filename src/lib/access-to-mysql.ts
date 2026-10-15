@@ -14,6 +14,8 @@ export type ConvertOptions = {
   charset?: string;
   collate?: string;
   batchSize?: number;
+  /** 单条 INSERT 的字节上限，避免超过 max_allowed_packet 或 phpMyAdmin 解析限制。 */
+  maxInsertBytes?: number;
 };
 
 export type ConvertedColumn = {
@@ -527,35 +529,77 @@ function createTableSql(
   return lines.join("\n");
 }
 
+export const DEFAULT_INSERT_BATCH_ROWS = 200;
+/** 常见 max_allowed_packet 为 1MB，单条语句控制在 256KB 以内。 */
+export const DEFAULT_INSERT_MAX_BYTES = 256 * 1024;
+
+function utf8Bytes(value: string): number {
+  return Buffer.byteLength(value, "utf8");
+}
+
+export function packInsertBatches(
+  rowSqls: string[],
+  header: string,
+  maxRows: number,
+  maxBytes: number,
+): string[][] {
+  const batches: string[][] = [];
+  let current: string[] = [];
+  let currentBytes = utf8Bytes(header);
+  const semicolonBytes = utf8Bytes(";");
+  const separatorBytes = utf8Bytes(",\n  ");
+
+  const flush = () => {
+    if (current.length === 0) {
+      return;
+    }
+    batches.push(current);
+    current = [];
+    currentBytes = utf8Bytes(header);
+  };
+
+  for (const rowSql of rowSqls) {
+    const rowBytes = utf8Bytes(rowSql);
+    const extra = current.length === 0 ? 0 : separatorBytes;
+    const projected = currentBytes + extra + rowBytes + semicolonBytes;
+    if (current.length > 0 && (current.length >= maxRows || projected > maxBytes)) {
+      flush();
+    }
+    current.push(rowSql);
+    currentBytes += (current.length === 1 ? 0 : separatorBytes) + rowBytes;
+  }
+  flush();
+  return batches;
+}
+
 function insertSql(
   tableName: string,
   columns: ConvertedColumn[],
   rows: Array<Record<string, Value>>,
   batchSize: number,
-): string {
+  maxInsertBytes: number,
+): { sql: string; oversizedRows: number } {
   if (rows.length === 0) {
-    return "";
+    return { sql: "", oversizedRows: 0 };
   }
 
   const colList = columns.map((column) => quoteIdent(column.name)).join(", ");
-  const chunks: string[] = [];
-
-  for (let offset = 0; offset < rows.length; offset += batchSize) {
-    const batch = rows.slice(offset, offset + batchSize);
-    const values = batch
-      .map((row) => {
-        const literals = columns.map((column) =>
-          sqlLiteral(row[column.name] ?? null, column.accessType),
-        );
-        return `(${literals.join(", ")})`;
-      })
-      .join(",\n  ");
-    chunks.push(
-      `INSERT INTO ${quoteIdent(tableName)} (${colList}) VALUES\n  ${values};`,
+  const header = `INSERT INTO ${quoteIdent(tableName)} (${colList}) VALUES\n  `;
+  const rowSqls = rows.map((row) => {
+    const literals = columns.map((column) =>
+      sqlLiteral(row[column.name] ?? null, column.accessType),
     );
-  }
+    return `(${literals.join(", ")})`;
+  });
+  const batches = packInsertBatches(rowSqls, header, batchSize, maxInsertBytes);
+  const oversizedRows = rowSqls.filter(
+    (rowSql) => utf8Bytes(header) + utf8Bytes(rowSql) + utf8Bytes(";") > maxInsertBytes,
+  ).length;
 
-  return chunks.join("\n");
+  return {
+    sql: batches.map((batch) => `${header}${batch.join(",\n  ")};`).join("\n\n"),
+    oversizedRows,
+  };
 }
 
 export function convertAccessBuffer(
@@ -566,10 +610,11 @@ export function convertAccessBuffer(
   const charset = options.charset ?? "utf8mb4";
   const collate = options.collate ?? "utf8mb4_unicode_ci";
   const engine = options.engine ?? "InnoDB";
-  const includeCreateDatabase = options.includeCreateDatabase ?? true;
+  const includeCreateDatabase = options.includeCreateDatabase ?? false;
   const includeDropTable = options.includeDropTable ?? true;
   const includeData = options.includeData ?? true;
-  const batchSize = Math.max(1, options.batchSize ?? 200);
+  const batchSize = Math.max(1, options.batchSize ?? DEFAULT_INSERT_BATCH_ROWS);
+  const maxInsertBytes = Math.max(1024, options.maxInsertBytes ?? DEFAULT_INSERT_MAX_BYTES);
   const databaseName = toMysqlName(
     options.databaseName || sourceName,
     "access_db",
@@ -605,9 +650,10 @@ export function convertAccessBuffer(
   sqlParts.push(`-- 生成时间: ${new Date().toISOString()}`);
   sqlParts.push(`-- 表数量: ${tableNames.length}`);
   sqlParts.push("");
-  sqlParts.push("/*!40101 SET NAMES utf8mb4 */;");
-  sqlParts.push("/*!40101 SET FOREIGN_KEY_CHECKS=0 */;");
-  sqlParts.push("SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';");
+  sqlParts.push("SET NAMES utf8mb4;");
+  sqlParts.push("SET SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO';");
+  sqlParts.push("SET FOREIGN_KEY_CHECKS=0;");
+  sqlParts.push("SET UNIQUE_CHECKS=0;");
   sqlParts.push("");
 
   if (includeCreateDatabase) {
@@ -615,6 +661,9 @@ export function convertAccessBuffer(
       `CREATE DATABASE IF NOT EXISTS ${quoteIdent(databaseName)} DEFAULT CHARACTER SET ${charset} COLLATE ${collate};`,
     );
     sqlParts.push(`USE ${quoteIdent(databaseName)};`);
+    sqlParts.push("");
+  } else {
+    sqlParts.push("-- 未生成 CREATE DATABASE / USE。请先在 phpMyAdmin 中选中目标数据库再导入。");
     sqlParts.push("");
   }
 
@@ -652,10 +701,15 @@ export function convertAccessBuffer(
 
       if (includeData && table.rowCount > 0) {
         const rows = table.getData();
-        const inserts = insertSql(tableName, columns, rows, batchSize);
-        if (inserts) {
-          sqlParts.push(inserts);
+        const inserts = insertSql(tableName, columns, rows, batchSize, maxInsertBytes);
+        if (inserts.sql) {
+          sqlParts.push(inserts.sql);
           sqlParts.push("");
+        }
+        if (inserts.oversizedRows > 0) {
+          tableWarnings.push(
+            `${inserts.oversizedRows} 行单条 INSERT 仍超过 ${Math.round(maxInsertBytes / 1024)}KB，导入前请调大 max_allowed_packet`,
+          );
         }
       }
 
@@ -680,7 +734,8 @@ export function convertAccessBuffer(
     }
   }
 
-  sqlParts.push("/*!40101 SET FOREIGN_KEY_CHECKS=1 */;");
+  sqlParts.push("SET UNIQUE_CHECKS=1;");
+  sqlParts.push("SET FOREIGN_KEY_CHECKS=1;");
   sqlParts.push("");
 
   return {

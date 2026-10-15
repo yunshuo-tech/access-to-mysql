@@ -30,7 +30,8 @@ function printHelp() {
   -o, --out DIR          输出目录（默认 ./mysql-sql）
   --db NAME              目标数据库名（单文件时可用）
   --password PASS        Access 数据库密码
-  --no-create-db         不生成 CREATE DATABASE
+  --create-db            生成 CREATE DATABASE / USE（需要建库权限）
+  --no-create-db         不生成 CREATE DATABASE（默认）
   --no-drop              不生成 DROP TABLE
   --no-data              只导出表结构
   -h, --help             显示帮助
@@ -41,7 +42,7 @@ function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     input: "",
     output: "./mysql-sql",
-    includeCreateDatabase: true,
+    includeCreateDatabase: false,
     includeDropTable: true,
     includeData: true,
   };
@@ -66,6 +67,10 @@ function parseArgs(argv: string[]): CliOptions {
     if (arg === "--password") {
       options.password = argv[i + 1];
       i += 1;
+      continue;
+    }
+    if (arg === "--create-db") {
+      options.includeCreateDatabase = true;
       continue;
     }
     if (arg === "--no-create-db") {

@@ -1,6 +1,6 @@
 # Access 转 MySQL
 
-**版本：** v1.0.2  
+**版本：** v1.0.3  
 **开发者：** Hangzhou Yunshuo Technology Co., Ltd.（杭州云硕科技有限公司）
 
 把 Microsoft Access（`.mdb` / `.accdb`）转成可直接导入的 MySQL SQL 脚本。提供网页上传转换和命令行批量转换两种用法。
@@ -117,7 +117,7 @@ server {
 3. 按需填写选项：
    - **目标数据库名**：可空，默认使用文件名
    - **数据库密码**：Access 未加密可留空
-   - **生成 CREATE DATABASE / USE**：导入时自动建库
+   - **生成 CREATE DATABASE / USE**：默认不勾选。phpMyAdmin 请先选中目标库再导入；只有 MySQL 账号有建库权限时才勾选
    - **导入前 DROP TABLE IF EXISTS**：覆盖已有同名表
    - **导出表数据（INSERT）**：取消勾选则只导出表结构
 4. 点击 **生成 MySQL 脚本**
@@ -158,7 +158,8 @@ npm run convert -- "D:\Users\Desktop\ACCESS" -o .\mysql-sql --no-data
 | `-o`, `--out DIR` | 输出目录，默认 `./mysql-sql` |
 | `--db NAME` | 目标数据库名（仅单文件时生效） |
 | `--password PASS` | Access 数据库密码 |
-| `--no-create-db` | 不生成 `CREATE DATABASE` |
+| `--create-db` | 生成 `CREATE DATABASE` / `USE`（账号需要建库权限） |
+| `--no-create-db` | 不生成 `CREATE DATABASE`（默认） |
 | `--no-drop` | 不生成 `DROP TABLE` |
 | `--no-data` | 只导出表结构 |
 | `-h`, `--help` | 显示帮助 |
@@ -172,14 +173,17 @@ npm run convert -- "D:\Users\Desktop\ACCESS" -o .\mysql-sql --no-data
 命令行：
 
 ```bash
-mysql -u root -p < mysql-sql/库存管理.sql
+mysql -u root -p 目标库名 < mysql-sql/库存管理.sql
 ```
 
-也可在 MySQL Workbench、Navicat 等客户端中打开脚本执行。
+phpMyAdmin 中先选中目标数据库再导入。也可在 MySQL Workbench、Navicat 等客户端中打开脚本执行。账号有建库权限时，转换时可加上 `--create-db`。
 
 脚本默认：
 
 - 字符集 `utf8mb4`，排序规则 `utf8mb4_unicode_ci`（中文可导入）
+- 开头执行 `SET NAMES utf8mb4`，不依赖条件注释
+- 不生成 `CREATE DATABASE` / `USE`，导入到 phpMyAdmin 当前选中的数据库
+- `INSERT` 每批最多 200 行，且单条语句约不超过 256KB，避免超过 `max_allowed_packet`
 - 存储引擎 `InnoDB`
 - 为 Access 的自动编号列生成 `AUTO_INCREMENT` 主键
 - 跳过系统表和链接表
